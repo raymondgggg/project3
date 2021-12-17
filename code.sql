@@ -471,6 +471,13 @@ FROM persons
     JOIN prisoners p on persons.stateID = p.id
     JOIN prisonerAssignments pA on p.id = pA.id;
 
+-- Find individuals who are not halfway through their times by the halfway point
+SELECT firstName, lastName, COALESCE((hrsWorked/hrsLeft) * 100, 100) AS "Completion %"
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerAssignments pA on p.id = pA.id
+WHERE (hrsWorked/hrsLeft) < .5;
+
 
 
 -- view: how long an event is
