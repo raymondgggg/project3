@@ -9,6 +9,7 @@ CREATE TABLE states
 )
 ;
 
+
 /*Table structure for table counties */
 CREATE TABLE counties
 (
@@ -426,16 +427,43 @@ values
 -- list out the guard that worked the most times with a prisoner
 
 
+-- Find how many hours a person needs, has completed, and how long they have left, as well as
+-- their skills for all the events they have been assigned. (uses aggregate function)
+SELECT distinct firstName, lastName, hrsLeft, DATEDIFF(startDate, endDate) AS "Days to complete assignment", skillName
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerAssignments pA on p.id = pA.id
+    JOIN prisonerEventDates pED on p.id = pED.id
+    JOIN eventDates eD on pED.location = eD.location and pED.event = eD.event
+    JOIN events e on eD.event = e.eventName
+    JOIN eventSkills eS on e.eventName = eS.eventName;
 
--- show all the guards and prisoners who events on the same day
+-- show all the guards and prisoners who events on the same day (does not work)
 SELECT guard.firstName, guard.LastName, prisoner.firstName, prisoner.LastName
-FROM persons prisoner, persons guard
-    JOIN guards g ON guard.stateID = g.guardID
-    JOIN guardEventDates gED on g.id = gED.id
-    JOIN eventDates eD on gED.location = eD.location and gED.event = eD.event
-    JOIN prisonerEventDates pED on eD.location = pED.location and eD.event = pED.event
-    JOIN prisoners p on pED.id = p.id
-WHERE gED.location = pED.location AND gED.event = pED.event;
+FROM persons guard, persons prisoner
+    JOIN prisoners p2 on prisoner.stateID = p2.id
+    JOIN prisonerEventDates D on p2.id = D.id
+    JOIN eventDates eD on D.location = eD.location and D.event = eD.event
+    JOIN guardEventDates gED on gED.location = D.location and D.event = gED.event
+WHERE gED.location LIKE d.location AND gED.event LIKE d.event
+GROUP BY guard.firstName, guard.LastName, prisoner.firstName, prisoner.LastName;
+
+
+-- find individuals who are not halfway through their times by the halfway point
+
+
+
+-- List individuals by most amount of time required, as well as their best skill (how would we do best skill)
+SELECT hrsLeft AS "Time required (hrs)", firstName, lastName, skillName
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerAssignments pA on p.id = pA.id
+    JOIN prisonerEventDates pED on p.id = pED.id
+    JOIN eventDates eD on pED.location = eD.location and pED.event = eD.event
+    JOIN events e on eD.event = e.eventName
+    JOIN eventSkills eS on e.eventName = eS.eventName
+group by DATEDIFF(startDate, endDate)
+ORDER BY hrsLeft desc;
 
 
 -- view: how long an event is
