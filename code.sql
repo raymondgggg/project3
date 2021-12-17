@@ -465,6 +465,13 @@ FROM persons
 group by DATEDIFF(startDate, endDate)
 ORDER BY hrsLeft desc;
 
+-- List individual by completion status as well as final date given
+SELECT firstName, lastName, COALESCE((hrsWorked/hrsLeft) * 100, 100.00) AS "Completion Status (%)", endDate AS "Final Date"
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerAssignments pA on p.id = pA.id;
+
+
 
 -- view: how long an event is
 
