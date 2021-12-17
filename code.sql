@@ -177,7 +177,8 @@ CREATE TABLE prisonerAssignments
     CONSTRAINT prisonerAssignments_fk4 FOREIGN KEY (status) REFERENCES statuses (statusType)
 )
 ;
-
+-- NOTE: MAKE SURE TO ADD THE COUNTY AND STATE COLUMNS as migrating foreign keys to match the design
+-- OR COME UP WITH MORE QUERIES THAT DO NOT REQUIRE ME TO CHANGE THE SCHEMA
 
 
 /*Data for the table states */
@@ -438,6 +439,8 @@ FROM persons
     JOIN events e on eD.event = e.eventName
     JOIN eventSkills eS on e.eventName = eS.eventName;
 
+-- TODO: RECURSIVE QUERIES
+-- IDEA: Show what two pairs of prisoners have worked the same event ---> would this be recursive?
 -- show all the guards and prisoners who events on the same day (does not work)
 SELECT guard.firstName, guard.LastName, prisoner.firstName, prisoner.LastName
 FROM persons guard, persons prisoner
@@ -445,12 +448,9 @@ FROM persons guard, persons prisoner
     JOIN prisonerEventDates D on p2.id = D.id
     JOIN eventDates eD on D.location = eD.location and D.event = eD.event
     JOIN guardEventDates gED on gED.location = D.location and D.event = gED.event
+    JOIN guards g on gED.id = g.id
 WHERE gED.location LIKE d.location AND gED.event LIKE d.event
 GROUP BY guard.firstName, guard.LastName, prisoner.firstName, prisoner.LastName;
-
-
--- find individuals who are not halfway through their times by the halfway point
-
 
 
 -- List individuals by most amount of time required, as well as their best skill (how would we do best skill)
@@ -465,22 +465,120 @@ FROM persons
 group by DATEDIFF(startDate, endDate)
 ORDER BY hrsLeft desc;
 
--- List individual by completion status as well as final date given
+-- List individual by completion status as well as final date given (uses aggregate function)
 SELECT firstName, lastName, COALESCE((hrsWorked/hrsLeft) * 100, 100.00) AS "Completion Status (%)", endDate AS "Final Date"
 FROM persons
     JOIN prisoners p on persons.stateID = p.id
     JOIN prisonerAssignments pA on p.id = pA.id;
 
--- Find individuals who are not halfway through their times by the halfway point
+-- Find individuals who are not halfway through their times by the halfway point (uses aggregate function)
 SELECT firstName, lastName, COALESCE((hrsWorked/hrsLeft) * 100, 100) AS "Completion %"
 FROM persons
     JOIN prisoners p on persons.stateID = p.id
     JOIN prisonerAssignments pA on p.id = pA.id
 WHERE (hrsWorked/hrsLeft) < .5;
 
+-- xtra queries in case we need them
+-- -------------------------------------------------------------------------------
+-- Show all the events the guards have worked
+SELECT firstName, lastName, event
+FROM persons
+    JOIN guards g on persons.stateID = g.id
+    JOIN guardEventDates gED on g.id = gED.id;
+
+-- Show all the events a prisoner has worked
+SELECT firstName, lastName, event
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerEventDates pED on p.id = pED.id;
+
+-- Show each guard and the counties they are a part of.
+SELECT firstName, lastName, county
+FROM persons
+    JOIN guards g on persons.stateID = g.id
+    JOIN counties c on g.state = c.state and g.county = c.countyName;
+
+-- Show how many events a guard has worked (uses aggregate function)
+SELECT firstName, lastName, COUNT(event) AS "Events Worked"
+FROM persons
+    JOIN guards g on persons.stateID = g.id
+    JOIN guardEventDates gED on g.id = gED.id
+GROUP BY firstName, lastName;
+
+-- Show how many events a prisoner has worked (uses aggregate function)
+SELECT firstName, lastName, COUNT(event) AS "Events Worked"
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerEventDates pED on p.id = pED.id
+GROUP BY firstName, lastName;
+
+-- Show all the guards who are not in Los Angeles County (uses subquery)
+SELECT firstName, lastName
+FROM persons
+    JOIN guards g on persons.stateID = g.id
+WHERE county NOT IN
+      (
+          SELECT county
+FROM persons
+    JOIN guards g2 on persons.stateID = g2.id
+WHERE county LIKE 'Los Angeles County'
+      );
+
+-- Show all the guards who did not work the Holiday Toy Drive event (uses subquery)
+SELECT DISTINCT firstName, lastName
+FROM persons
+    JOIN guards g on persons.stateID = g.id
+    JOIN guardEventDates gED on g.id = gED.id
+WHERE event NOT IN
+      (
+          SELECT event
+from events
+WHERE event LIKE 'Holiday Toy Drive'
+      );
 
 
--- view: how long an event is
+-- Show all the prisoners who have less than 30 days to complete their assignment (uses subquery)
+SELECT firstName, lastName, DATEDIFF(startDate, endDate) AS DaysLeft
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerAssignments pA on p.id = pA.id
+WHERE DATEDIFF(startDate, endDate) NOT IN (
+    SELECT DATEDIFF(startDate, endDate)
+FROM prisonerassignments
+WHERE DATEDIFF(startDate, endDate) > 30
+);
+
+
+-- Show all the prisoners that did not work the Beach Cleanup or Food Pantry Distribution Events (uses subquery)
+SELECT firstName, lastName
+FROM persons
+    JOIN prisoners p on persons.stateID = p.id
+    JOIN prisonerEventDates pED on p.id = pED.id
+WHERE event NOT IN (
+    SELECT eventName
+FROM events
+WHERE eventName LIKE 'Beach Cleanup' OR 'Food Pantry Distribution'
+    );
+
+-- Show all the events happening outside of LA county (not working?)
+SELECT event
+FROM locations
+    JOIN eventDates eD on locations.address = eD.location
+WHERE location NOT IN (
+    SELECT county
+FROM locations
+WHERE county LIKE 'Los Angeles County' OR 'Bell County'
+);
+
+SELECT county
+FROM locations
+WHERE county LIKE 'Los Angeles County';
+
+
+
+
+
+-- views: TODO: Look at the queries above and see what can be turned into a view
 
 
 
