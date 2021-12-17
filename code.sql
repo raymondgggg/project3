@@ -7,7 +7,6 @@ CREATE TABLE states
 )
 ;
 
-
 /*Table structure for table counties */
 CREATE TABLE counties
 (
@@ -175,9 +174,15 @@ CREATE TABLE prisonerAssignments
     CONSTRAINT prisonerAssignments_fk4 FOREIGN KEY (status) REFERENCES statuses (statusType)
 )
 ;
--- NOTE: MAKE SURE TO ADD THE COUNTY AND STATE COLUMNS as migrating foreign keys to match the design
--- OR COME UP WITH MORE QUERIES THAT DO NOT REQUIRE ME TO CHANGE THE SCHEMA
--- triggers
+
+create table statesCounties
+(
+    state varchar(30) NOT NULL,
+    countyName varchar(20) NOT NULL,
+    stateAbbreviation varchar(20) NOT NULL,
+    CONSTRAINT statesCounties_pk PRIMARY KEY (state, countyName)
+);
+
 
 -- Makes sure that there are two guards working an event before a prisoner is allowed to work
 create trigger twoguards before
@@ -221,38 +226,28 @@ if;
 end;
 
 -- Whatever time a prisoner worked, it adds the time into their hours worked after insert
-#
 create trigger insertWorked after
 insert on
 prisonereventdates
-#
-for each row
+for
+each
+row
 begin
-#
-declare tim decimal
-(10,2);
-#
-declare currenttim decimal
-(10,2);
-#
-select eventLen
-into tim
-#         from prisonereventdates inner join eventDates on prisonerEventDates.event= eventDates.event
-#         where new.event=eventDates.event;
-#
-select hrsWorked
-into currenttim
-#         from prisonerAssignments
-#             where prisonerAssignments.id=new.id;
-#
-update prisonerAssignments
-#
-set prisonerAssignments
-.hrsWorked=
-(tim+currenttim)
-#     where prisonerAssignments.id=new.id;
-#
-#
+    declare tim decimal
+    (10,2);
+    declare currenttim decimal
+    (10,2);
+    select eventLen
+    into tim
+    from prisonereventdates inner join eventDates on prisonerEventDates.event= eventDates.event
+    where new.event=eventDates.event and new.id = prisonerEventDates.id AND new.location = prisonerEventDates.location;
+    select hrsWorked
+    into currenttim
+    from prisonerAssignments
+    where prisonerAssignments.id=new.id;
+    update prisonerAssignments
+    set prisonerAssignments.hrsWorked=(tim+currenttim)
+    where prisonerAssignments.id=new.id;
 end;
 
 -- Whatever time a prisoner worked, it adds the time into their hours worked after update
@@ -267,7 +262,7 @@ begin
     select eventLen
     into tim
     from prisonereventdates inner join eventDates on prisonerEventDates.event= eventDates.event
-    where new.event=eventDates.event;
+    where new.event=eventDates.event and new.id = prisonerEventDates.id AND new.location = prisonerEventDates.location;
     select hrsWorked
     into currenttim
     from prisonerAssignments
@@ -343,6 +338,7 @@ end
 if;
 end;
 
+
 -- makes sure event is not longer than 24 hrs before update
 create trigger updateTime24 before
 update  on eventDates
@@ -355,6 +351,44 @@ begin
 end
 if;
 end;
+
+
+--
+Create trigger statesCountiesInsert before
+insert on
+statesCounties
+for
+each
+row
+begin
+    if (
+        SELECT count(*)
+    FROM statesCounties
+    WHERE (statesCounties.state=new.State AND (new.stateAbbreviation != statesCounties.stateAbbreviation) )or statesCounties.stateAbbreviation =new.stateAbbreviation and (new.state !=statesCounties.state)
+        ) > 0 then
+        SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT
+    = 'info does not match';
+END
+IF;
+    end;
+
+
+Create trigger statesCountiesUpdate before
+update on statesCounties
+    for each row
+begin
+    if (
+        SELECT count(*)
+    FROM statesCounties
+    WHERE (statesCounties.state=new.State AND (new.stateAbbreviation != statesCounties.stateAbbreviation) )or statesCounties.stateAbbreviation =new.stateAbbreviation and (new.state !=statesCounties.state)
+        ) > 0 then
+        SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT
+    = 'info does not match';
+END
+IF;
+    end;
 
 /*Data for the table states */
 insert into states
@@ -511,7 +545,6 @@ values
     (26756, '440 Mesa Dr, Oceanside, CA, 92056', 'Food Pantry Distribution'),
     (34587, '440 Mesa Dr, Oceanside, CA, 92056', 'Food Pantry Distribution'),
     (89786, '205 Gold Ct, Carlin, NV, 89822', 'Outdoor Volunteer Day'),
-    (45673, '205 Gold Ct, Carlin, NV, 89822', 'Outdoor Volunteer Day'),
     (34587, '754 E St Hawthorne, NV, 89415', 'Trail Volunteer Event'),
     (45673, '754 E St Hawthorne, NV, 89415', 'Trail Volunteer Event'),
     (34456, '1100 Shady Ln, Belton, TX, 76513', 'Beach Cleanup'),
@@ -524,6 +557,8 @@ values
     (34456, '341 Pine St, Irvine, CA, 92606', 'Native Garden Volunteer Day'),
     (34456, '440 Mesa Dr, Oceanside, CA, 92056', 'Friends & Neighbors Day of Service'),
     (45673, '440 Mesa Dr, Oceanside, CA, 92056', 'Friends & Neighbors Day of Service');
+
+
 
 /*Data for the table prisoners */
 insert into prisoners
@@ -554,12 +589,21 @@ VALUES
     (89089, '341 Pine St, Irvine, CA, 92606', 'Holiday Community Service Day'),
     (67654, '440 Mesa Dr, Oceanside, CA, 92056', 'Food Pantry Distribution'),
     (67654, '145 Curlew Ave, Naples, FL, 34102', 'Volunteer with Angel Tree'),
-    (38938, '205 Gold Ct, Carlin, NV, 89822', 'Outdoor Volunteer Day'),
+
     (38938, '341 Pine St, Irvine, CA, 92606', 'Native Garden Volunteer Day'),
     (32738, '754 E St Hawthorne, NV, 89415', 'Trail Volunteer Event'),
     (32738, '1100 Shady Ln, Belton, TX, 76513', 'Beach Cleanup'),
     (14934, '1100 Shady Ln, Belton, TX, 76513', 'Beach Cleanup'),
     (34853, '145 Curlew Ave, Naples, FL, 34102', 'Holiday Toy Drive');
+
+-- trigger should make this fail because this event does not have 2 or more guards
+insert into prisonerEventDates
+    (id, location, event)
+VALUE
+(38938,
+'205 Gold Ct, Carlin, NV, 89822',
+'Outdoor Volunteer Day'
+);
 
 /*Data for the table statuses */
 insert into statuses
@@ -598,18 +642,56 @@ values
 
 /*Data for the table prisonerAssignments */
 insert into prisonerAssignments
-    (jailID, crimeID, id, endDate ,hours_Assigned, hrsWorked)
+    (jailID, crimeID, id, startDate ,endDate ,hours_Assigned, hrsWorked)
 values
-    (3674745, 1, 12445, '2021-05-13', 30, 2),
-    (6372622, 2, 24567, '2022-06-12', 20, 5.50),
-    (7462521, 3, 89089, '2017-04-13', 50, 8.75),
-    (8373652, 4, 67654, '2016-03-11', 10, 9.5),
-    (7363622, 5, 38938, '2022-10-12', 31, 0),
-    (3383722, 6, 32738, '2017-07-10', 5, 5),
-    (1192233, 7, 45632, '2022-05-12', 3, 0),
-    (3383722, 1, 14934, '2022-08-13', 17, 6),
-    (1192233, 2, 34853, '2021-11-13', 25, 4.5);
+    (3674745, 1, 12445, '2021-04-13', '2021-05-13', 30, 2),
+    (6372622, 2, 24567, '2021-03-13', '2022-06-12', 20, 5.50),
+    (7462521, 3, 89089, '2017-04-01', '2017-04-13', 50, 8.75),
+    (8373652, 4, 67654, '2016-03-13', '2016-03-11', 10, 9.5),
+    (7363622, 5, 38938, '2021-03-13', '2022-10-12', 31, 0),
+    (3383722, 6, 32738, '2017-03-13', '2017-07-10', 5, 5),
+    (1192233, 7, 45632, '2021-08-17', '2022-05-12', 3, 0),
+    (3383722, 1, 14934, '2021-09-22', '2022-08-13', 17, 6),
+    (1192233, 2, 34853, '2021-10-05', '2021-11-11', 25, 4.5);
 
+-- Test for the trigger not allowing event to be more than 24 hours
+insert into eventDates
+    (location, event, date, eventLen)
+values
+    ('75 Birmingham Rd Burbank, CA, 91504', 'Annual Holiday Outreach', '2021-12-20', 25.00);
+
+-- test for trigger not allowing event to be more than 24 hours
+UPDATE eventDates
+SET eventLen = 25.00
+WHERE location LIKE '75 Birmingham Rd Burbank, CA, 91504';
+
+-- passing test
+insert into statesCounties
+    (state, countyName, stateAbbreviation)
+VALUES
+    ('California', 'Orange County', 'CA'),
+    ('California', 'LA County', 'CA'),
+    ('Florida', 'Miami-Dade County', 'FL');
+
+-- TEST FOR TRIGGERS
+insert into statesCounties
+    (state, countyName, stateAbbreviation)
+VALUES
+    ('California', 'San Diego County', 'CD');
+
+insert into statesCounties
+    (state, countyName, stateAbbreviation)
+VALUES
+    ('Hawaii', 'San Diego County', 'CA');
+
+update statesCounties
+set stateAbbreviation='CD'
+where countyName='Orange County';
+update statesCounties
+set state='Mexico'
+where countyName='Orange County';
+
+-- update worked trigger
 update prisonerAssignments
 set hrsWorked=3
 where id=45632;
@@ -619,7 +701,7 @@ where id=45632;
 
 -- Find how many hours a person needs, has completed, and how long they have left, as well as
 -- their skills for all the events they have been assigned. (uses aggregate function)
-SELECT distinct firstName, lastName, hours_assigned, DATEDIFF(startDate, endDate) AS "Days to complete assignment", skillName
+SELECT distinct firstName, lastName, hours_assigned, DATEDIFF(endDate, startDate) AS "Days to complete assignment", skillName
 FROM persons
     JOIN prisoners p on persons.stateID = p.id
     JOIN prisonerAssignments pA on p.id = pA.id
@@ -628,7 +710,7 @@ FROM persons
     JOIN events e on eD.event = e.eventName
     JOIN eventSkills eS on e.eventName = eS.eventName;
 
--- List individuals by most amount of time required, as well as their best skill (how would we do best skill)
+-- List individuals by most amount of time required, as well as their best skill
 SELECT hours_assigned AS "Time required (hrs)", firstName, lastName, skillName
 FROM persons
     JOIN prisoners p on persons.stateID = p.id
@@ -637,7 +719,7 @@ FROM persons
     JOIN eventDates eD on pED.location = eD.location and pED.event = eD.event
     JOIN events e on eD.event = e.eventName
     JOIN eventSkills eS on e.eventName = eS.eventName
-group by DATEDIFF(startDate, endDate)
+group by DATEDIFF(endDate, startDate)
 ORDER BY hours_assigned desc;
 
 -- List individual by completion status as well as final date given (uses aggregate function)
@@ -649,7 +731,7 @@ FROM persons
     JOIN prisoners p on persons.stateID = p.id
     JOIN prisonerAssignments pA on p.id = pA.id;
 
--- Find individuals who are not halfway through their times by the halfway point (uses aggregate function)
+-- Find individuals who are not halfway through their assignment
 SELECT firstName, lastName, COALESCE((hrsWorked / hours_assigned) * 100, 100) AS "Completion %"
 FROM persons
     JOIN prisoners p on persons.stateID = p.id
@@ -700,12 +782,9 @@ AS
         JOIN eventSkills eS on e.eventName = eS.eventName
     GROUP BY firstName, lastName;
 
-SELECT firstName, lastName, state
-FROM persons
-    JOIN guards g on persons.stateID = g.id
-    JOIN prisoners p on persons.stateID = p.id
-    JOIN prisonerAssignments pA on p.id = pA.id;
-
+-- use prisoner skill count
+SELECT *
+FROM prisonerSkillCount;
 
 CREATE VIEW getLACounty
 AS
@@ -740,23 +819,20 @@ WHERE gED.event NOT IN
 FROM gettoydriveevent
       );
 
-
-
 CREATE VIEW DateDiffGreater30
 AS
-    SELECT DATEDIFF(startDate, endDate)
+    SELECT DATEDIFF(endDate, startDate)
     FROM prisonerassignments
-    WHERE DATEDIFF(startDate, endDate) > 30;
+    WHERE DATEDIFF(endDate, startDate) > 30;
 -- Show all the prisoners who have 30 days or less to complete their assignment (uses subquery)
-SELECT firstName, lastName, DATEDIFF(startDate, endDate) AS DaysLeft
+SELECT firstName, lastName, DATEDIFF(endDate, startDate) AS DaysLeft
 FROM persons
     JOIN prisoners p on persons.stateID = p.id
     JOIN prisonerAssignments pA on p.id = pA.id
-WHERE DATEDIFF(startDate, endDate) NOT IN (
+WHERE DATEDIFF(endDate, startDate) NOT IN (
     SELECT *
 FROM datediffgreater30
 );
-
 
 CREATE VIEW getBeachAndFoodEvents
 AS
@@ -780,7 +856,7 @@ AS
     SELECT county
     FROM locations
     WHERE county LIKE 'Orange County';
--- Show all the events happening outside of LA county (not working?)
+-- Show all the events that are happening or that have happened outside of Orange County.
 SELECT event
 FROM locations
     JOIN eventDates eD on locations.address = eD.location
@@ -789,30 +865,35 @@ WHERE location NOT IN (
 FROM getOrangeCounty
 );
 
-
 -- list out the guard that worked the most times with a prisoner
 select firstName, lastName, status, endDate
 from prisoners inner join persons p on prisoners.id = p.stateID inner join prisonerAssignments pA on prisoners.id = pA.id;
 
 
+-- recursive
 -- gets events a guard and prisoner worked together
-select p.firstName, p.lastName, p4.lastName, p4.firstName, gEd.event, pA.event, count(pa.event)
+select p.firstName AS "Prisoners first name", p.lastName AS "Prisoner's Last Name", p4.lastName AS "Guard last name", p4.firstName AS "Guard first name", pA.event AS "Event"
 from prisoners inner join persons p on prisoners.id = p.stateID inner join prisonereventdates pA on prisoners.id = pA.id inner join eventdates e on pA.event = e.event inner join events e2 on e.event = e2.eventName
     inner join eventSkills eS on e2.eventName = eS.eventName inner join skills s on eS.skillName = s.skillName
     inner join locations l on e.location = l.address inner join guardEventDates gED on pA.location = gED.location
-        and e.event = gED.event inner join guards g on gED.id = g.id inner join persons p4 on g.id=p4.stateID
-GROUP BY p.firstName, p.lastName, p4.lastName, p4.firstName, gEd.event, pA.event;
+        and e.event = gED.event inner join guards g on gED.id = g.id inner join persons p4 on g.id=p4.stateID;
 
+-- Shows two pairs of prisoners that worked the same event
+select p1.id AS "Prisoner 1 ID", p.id AS "Prisoner 2 ID", p1.event, p1.location
+from prisonerEventDates p1 INNER JOIN prisonereventdates p on p1.event = p.event
+where (p1.id <> p.id) AND (p1.location = P.location AND p1.event = p.event)
+order by event, location;
 
-
-
-
-
-
-
-
-
-
-
-
-
+-- Shows how many times two prisoners have worked with one another
+select pr2.lastName        as "Prisoner 1 Last name",
+    pr2.firstName       as "Prisoner 1 First name",
+    pr.lastname         as "Prisoner 2 Last name",
+    pr.firstName        as "Prisoner 2 Firs name",
+    count(pr2.lastName) as "Times Worked Together"
+from prisonerEventDates p1
+    inner join persons pr on p1.id = pr.stateID
+    inner join prisonerEventDates p2
+    on p1.event = p2.event
+    inner join persons pr2 on p2.id = pr2.stateID
+where pr2.stateID > pr.stateID
+group by pr2.lastName, pr2.firstName, pr.lastname, pr.firstName;
